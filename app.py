@@ -1,32 +1,20 @@
+import uvicorn
 from fastapi import FastAPI
 from pydantic import BaseModel
 from pydantic_ai import Agent
+from datetime import date
 from dotenv import load_dotenv
 
 load_dotenv()
 
-
-# 1. Модель відповіді від LLM
+# --- Модель відповіді ---
 class Weather(BaseModel):
     temperature: float
     condition: str
+    explication: str
+    date: str
 
 
-# 2. Агент Pydantic AI
-agent = Agent(
-    # В Pydantic AI для OpenAI правильний формат моделі:
-    # 'openai:gpt-4o-mini', а не просто 'gpt-4o-mini'
-    "openai:gpt-4o-mini",
-    output_type=Weather,
-    instructions=(
-        "You are a weather bot. "
-        "Read the user question and respond ONLY with a valid Weather object: "
-        "temperature (float, in Celsius) and condition (short English text)."
-    ),
-)
-
-
-# 3. FastAPI
 app = FastAPI()
 
 
@@ -36,28 +24,37 @@ class UserQuery(BaseModel):
 
 @app.post("/ask")
 async def ask_agent(query: UserQuery):
-    # запускаємо агента
-    result = await agent.run(query.question)
+    today_str = date.today().isoformat()
 
-    # структурований результат (твоя модель Weather)
+    instructions = (
+        f"You are a weather bot. "
+        f"Today is {today_str}. "
+        f"Return ONLY a valid Weather object with fields: "
+        f"temperature (float, Celsius), "
+        f"condition (short English text), "
+        f"explication (What sources did you use), "
+        f"date (exactly '{today_str}')."
+    )
+
+    # створюємо агента на кожен запит — безпечно та швидко
+    agent = Agent(
+        "openai:gpt-4o-mini",
+        output_type=Weather,
+        instructions=instructions,
+    )
+
+    result = await agent.run(query.question)
     weather: Weather = result.output
 
-    # usage з токенами
-    usage = result.usage()  # RunUsage dataclass
-
-    # Повертаємо чистий JSON, без ```json ... ```
     return {
-        "weather": {
-            "temperature": weather.temperature,
-            "condition": weather.condition,
-        },
-        "usage": {
-            "requests": usage.requests,
-            "tool_calls": usage.tool_calls,
-            "input_tokens": usage.input_tokens,
-            "output_tokens": usage.output_tokens,
-            "cache_write_tokens": usage.cache_write_tokens,
-            "cache_read_tokens": usage.cache_read_tokens,
-            "details": usage.details,  # тут ще детальніший розклад, якщо модель його дає
-        },
+        "weather": weather,
+        "usage": result.usage(),
     }
+
+
+def main():
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+
+
+if __name__ == "__main__":
+    main()

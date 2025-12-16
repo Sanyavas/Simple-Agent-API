@@ -37,7 +37,7 @@ async def ask_agent(query: UserQuery):
     )
 
     # створюємо агента на кожен запит — безпечно та швидко
-    agent = Agent(
+    agent = Agent[None, Weather](
         "openai:gpt-4o-mini",
         output_type=Weather,
         instructions=instructions,
